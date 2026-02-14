@@ -171,9 +171,9 @@ def draw_scrolling_text(draw, x, y, max_width, text, font, fill=255):
     elapsed = time.monotonic() - _scroll_start_time
     overflow = int(text_w - max_width)
 
-    # Total cycle: pause -> scroll right-to-left -> pause -> scroll left-to-right
+    # Total cycle: pause -> scroll left -> pause -> reset
     scroll_duration = overflow / SCROLL_SPEED
-    cycle = SCROLL_PAUSE + scroll_duration + SCROLL_PAUSE + scroll_duration
+    cycle = SCROLL_PAUSE + scroll_duration + SCROLL_PAUSE
     t = elapsed % cycle
 
     if t < SCROLL_PAUSE:
@@ -182,12 +182,9 @@ def draw_scrolling_text(draw, x, y, max_width, text, font, fill=255):
     elif t < SCROLL_PAUSE + scroll_duration:
         # Scrolling left.
         offset = int((t - SCROLL_PAUSE) * SCROLL_SPEED)
-    elif t < SCROLL_PAUSE + scroll_duration + SCROLL_PAUSE:
+    else:
         # Paused at the end (right-aligned).
         offset = overflow
-    else:
-        # Scrolling back right.
-        offset = overflow - int((t - 2 * SCROLL_PAUSE - scroll_duration) * SCROLL_SPEED)
 
     offset = max(0, min(offset, overflow))
 
