@@ -62,42 +62,36 @@ PAGE_DURATION = 2
 
 
 def draw_bar(draw, x, y, width, height, label, value, max_value=100):
-    """Draw a horizontal bar chart with the label on top.
+    """Draw a horizontal bar chart with the label centered inside.
 
     :param draw: PIL ImageDraw object.
     :param int x: Left edge x-coordinate.
     :param int y: Top edge y-coordinate.
     :param int width: Total width available for the bar.
-    :param int height: Total height available (label + bar).
-    :param str label: Short label displayed above the bar (e.g. "CPU").
+    :param int height: Total height of the bar.
+    :param str label: Short label displayed inside the bar (e.g. "CPU").
     :param float value: Current value of the metric.
     :param float max_value: Maximum value (default 100, i.e. percentage).
     """
-    # Draw the label text centered above the bar.
-    label_line_height = 12
-    label_text = f"{label}: {int(value)}%"
-    label_width = draw.textlength(label_text, font=font)
-    label_x = x + (width - label_width) // 2
-    draw.text((label_x, y), label_text, font=font, fill=255)
-
-    # The bar starts below the label and fills the remaining height.
-    bar_y = y + label_line_height
-    bar_height = height - label_line_height
-    if bar_height < 1:
-        return
-
-    # Bar spans the full available width.
     bar_width = width
 
     # Draw the outline of the bar.
-    draw.rectangle((x, bar_y, x + bar_width - 1, bar_y + bar_height - 1), outline=255, fill=0)
+    draw.rectangle((x, y, x + bar_width - 1, y + height - 1), outline=255, fill=0)
 
     # Draw the filled portion proportional to value / max_value.
     fill_width = int(bar_width * min(value, max_value) / max_value)
     if fill_width > 0:
         draw.rectangle(
-            (x, bar_y, x + fill_width - 1, bar_y + bar_height - 1), outline=255, fill=255
+            (x, y, x + fill_width - 1, y + height - 1), outline=255, fill=255
         )
+
+    # Draw the label text centered inside the bar.
+    label_text = f"{label}: {int(value)}%"
+    text_w = draw.textlength(label_text, font=font)
+    text_x = x + (bar_width - text_w) // 2
+    text_y = y + (height - 10) // 2  # roughly center vertically (default font ~10px)
+    # Invert fill so text is visible over both filled and empty regions.
+    draw.text((text_x, text_y), label_text, font=font, fill=0 if fill_width > bar_width // 2 else 255)
 
 
 def get_stats():
