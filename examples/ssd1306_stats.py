@@ -129,6 +129,75 @@ def _get_link_speed_bps(iface):
 _net_iface = _get_default_iface()
 NET_MAX_BPS = _get_link_speed_bps(_net_iface)
 
+# --- Scrolling text configuration ---
+# Speed of text scrolling in pixels per second.
+SCROLL_SPEED = 30
+# Pause duration in seconds at each end of the scroll.
+SCROLL_PAUSE = 1.0
+# Track the last header to reset scroll when it changes.
+_scroll_header = None
+_scroll_start_time = None
+
+
+def draw_scrolling_text(draw, x, y, max_width, text, font, fill=255):
+    """Draw text that scrolls horizontally if it exceeds max_width.
+
+    The text pauses at the left edge, scrolls left until the end is visible,
+    pauses again, then resets.
+
+    :param draw: PIL ImageDraw object.
+    :param int x: Left edge x-coordinate.
+    :param int y: Top edge y-coordinate.
+    :param int max_width: Maximum pixel width available.
+    :param str text: The text to render.
+    :param font: PIL ImageFont object.
+    :param int fill: Pixel fill value (default 255).
+    """
+    global _scroll_header, _scroll_start_time
+
+    text_w = draw.textlength(text, font=font)
+
+    # If text fits, just draw it normally.
+    if text_w <= max_width:
+        _scroll_header = None
+        draw.text((x, y), text, font=font, fill=fill)
+        return
+
+    # Reset scroll timer when the header text changes.
+    if text != _scroll_header:
+        _scroll_header = text
+        _scroll_start_time = time.monotonic()
+
+    elapsed = time.monotonic() - _scroll_start_time
+    overflow = int(text_w - max_width)
+
+    # Total cycle: pause -> scroll right-to-left -> pause -> scroll left-to-right
+    scroll_duration = overflow / SCROLL_SPEED
+    cycle = SCROLL_PAUSE + scroll_duration + SCROLL_PAUSE + scroll_duration
+    t = elapsed % cycle
+
+    if t < SCROLL_PAUSE:
+        # Paused at the start (left-aligned).
+        offset = 0
+    elif t < SCROLL_PAUSE + scroll_duration:
+        # Scrolling left.
+        offset = int((t - SCROLL_PAUSE) * SCROLL_SPEED)
+    elif t < SCROLL_PAUSE + scroll_duration + SCROLL_PAUSE:
+        # Paused at the end (right-aligned).
+        offset = overflow
+    else:
+        # Scrolling back right.
+        offset = overflow - int((t - 2 * SCROLL_PAUSE - scroll_duration) * SCROLL_SPEED)
+
+    offset = max(0, min(offset, overflow))
+
+    # Clip rendering to max_width by drawing onto a temporary image.
+    tmp = Image.new("1", (int(text_w) + 1, 12), 0)
+    tmp_draw = ImageDraw.Draw(tmp)
+    tmp_draw.text((0, 0), text, font=font, fill=fill)
+    cropped = tmp.crop((offset, 0, offset + max_width, 12))
+    image.paste(cropped, (x, y))
+
 
 def draw_bar(draw, x, y, width, height, label, value, actual, total, max_value=100):
     """Draw a horizontal bar chart with the label centered inside.
@@ -263,7 +332,7 @@ while True:
     # Line 1: cycle through hostname, IPv4 address, and IPv6 address.
     headers = [hostname, ip4_address, ip6_address if ip6_address else "No IPv6"]
     header = headers[header_index]
-    draw.text((x, top), header, font=font, fill=255)
+    draw_scrolling_text(draw, x, top, disp.width - x, header, font, fill=255)
 
     # Draw a large bar chart using the remaining vertical space for the single stat.
     bar_y = top + 14
