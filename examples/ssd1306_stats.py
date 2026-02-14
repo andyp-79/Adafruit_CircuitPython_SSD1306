@@ -56,6 +56,10 @@ font = ImageFont.load_default()
 # Some other nice fonts to try: http://www.dafont.com/bitmap.php
 # font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
 
+# --- Page configuration ---
+# Duration each page is displayed, in seconds.
+PAGE_DURATION = 2
+
 
 def draw_bar(draw, x, y, width, height, label, value, max_value=100):
     """Draw a horizontal bar chart showing usage of a metric.
@@ -97,34 +101,61 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
     draw.text((text_x, y), pct_text, font=font, fill=0 if fill_width > bar_width // 2 else 255)
 
 
-while True:
-    # Draw a black filled box to clear the image.
-    draw.rectangle((0, 0, width, height), outline=0, fill=0)
-
-    # Shell scripts for system monitoring from here:
-    # https://unix.stackexchange.com/questions/119126/command-to-display-memory-usage-disk-usage-and-cpu-load
+def get_stats():
+    """Fetch current system stats and return a list of (label, value) tuples."""
     cmd = "hostname"
-    IP = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    hostname = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+
+    cmd = "hostname -I | cut -d' ' -f1"
+    ip_address = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+
     cmd = 'cut -f 1 -d " " /proc/loadavg'
-    CPU = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    cpu_load = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    cpu_percent = min(float(cpu_load) * 100, 100)
+
     cmd = "free -m | awk 'NR==2{printf \"%.2f\", $3*100/$2 }'"
-    MemPercent = float(subprocess.check_output(cmd, shell=True).decode("utf-8").strip())
+    mem_percent = float(subprocess.check_output(cmd, shell=True).decode("utf-8").strip())
+
     cmd = "df -h | awk '$NF==\"/\"{printf \"%s\", $5}'"
-    DiskPercent = float(
+    disk_percent = float(
         subprocess.check_output(cmd, shell=True).decode("utf-8").strip().rstrip("%")
     )
 
-    # Convert CPU load average to a rough percentage (assumes single-core max of 1.0).
-    CPUPercent = min(float(CPU) * 100, 100)
+    return hostname, ip_address, [
+        ("CPU", cpu_percent),
+        ("Mem", mem_percent),
+        ("Disk", disk_percent),
+    ]
 
-    # Line 1: hostname as plain text.
-    draw.text((x, top + 0), "Host: " + IP, font=font, fill=255)
 
-    # Lines 2-4: horizontal bar charts for CPU, Memory, and Disk usage.
-    bar_height = 8
-    draw_bar(draw, x, top + 9, width, bar_height, "CPU", CPUPercent)
-    draw_bar(draw, x, top + 18, width, bar_height, "Mem", MemPercent)
-    draw_bar(draw, x, top + 27, width, bar_height, "Disk", DiskPercent)
+page_index = 0
+last_page_time = time.monotonic()
+
+while True:
+    now = time.monotonic()
+
+    # Flip to the next page after PAGE_DURATION seconds.
+    if now - last_page_time >= PAGE_DURATION:
+        hostname, ip_address, stats = get_stats()
+        page_index = (page_index + 1) % len(stats)
+        last_page_time = now
+    else:
+        # On first iteration we still need data.
+        if "stats" not in dir():
+            hostname, ip_address, stats = get_stats()
+
+    label, value = stats[page_index]
+
+    # Clear the image.
+    draw.rectangle((0, 0, width, height), outline=0, fill=0)
+
+    # Line 1: hostname and IP address.
+    draw.text((x, top), hostname + " " + ip_address, font=font, fill=255)
+
+    # Draw a large bar chart using the remaining vertical space for the single stat.
+    bar_y = top + 12
+    bar_height = height - bar_y - 1
+    draw_bar(draw, x, bar_y, width, bar_height, label, value)
 
     # Display image.
     disp.image(image)
