@@ -64,6 +64,9 @@ PAGE_DURATION = 2
 def draw_bar(draw, x, y, width, height, label, value, max_value=100):
     """Draw a horizontal bar chart with the label centered inside.
 
+    The label text is inverted where it overlaps the filled portion of the bar
+    so it remains readable regardless of the fill level.
+
     :param draw: PIL ImageDraw object.
     :param int x: Left edge x-coordinate.
     :param int y: Top edge y-coordinate.
@@ -75,7 +78,7 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
     """
     bar_width = width
 
-    # Draw the outline of the bar.
+    # Draw the outline of the bar (empty).
     draw.rectangle((x, y, x + bar_width - 1, y + height - 1), outline=255, fill=0)
 
     # Draw the filled portion proportional to value / max_value.
@@ -85,13 +88,23 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
             (x, y, x + fill_width - 1, y + height - 1), outline=255, fill=255
         )
 
-    # Draw the label text centered inside the bar.
+    # Compute centered label position.
     label_text = f"{label}: {int(value)}%"
     text_w = draw.textlength(label_text, font=font)
-    text_x = x + (bar_width - text_w) // 2
-    text_y = y + (height - 10) // 2  # roughly center vertically (default font ~10px)
-    # Invert fill so text is visible over both filled and empty regions.
-    draw.text((text_x, text_y), label_text, font=font, fill=0 if fill_width > bar_width // 2 else 255)
+    text_x = int(x + (bar_width - text_w) // 2)
+    text_y = int(y + (height - 10) // 2)
+
+    # Render label into a temporary image to get per-pixel control.
+    tmp = Image.new("1", (bar_width, height), 0)
+    tmp_draw = ImageDraw.Draw(tmp)
+    tmp_draw.text((text_x - x, text_y - y), label_text, font=font, fill=255)
+
+    # For each pixel in the temporary label image, XOR it onto the main image
+    # so text appears white on the dark region and black on the filled region.
+    from PIL import ImageChops
+    bar_region = image.crop((x, y, x + bar_width, y + height))
+    composited = ImageChops.logical_xor(bar_region, tmp)
+    image.paste(composited, (x, y))
 
 
 def get_stats():
@@ -144,6 +157,20 @@ while True:
     # Clear the image.
     draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
+    # Line 1: alternate between hostname and IP address.
+    header = hostname if show_hostname else ip_address
+    draw.text((x, top), header, font=font, fill=255)
+
+    # Draw a large bar chart using the remaining vertical space for the single stat.
+    bar_y = top + 14
+    bar_height = height - bar_y - 1
+    bar_max_width = min(width, disp.width) - x
+    draw_bar(draw, x, bar_y, bar_max_width, bar_height, label, value)
+
+    # Display image.
+    disp.image(image)
+    disp.show()
+    time.sleep(0.1)
     # Line 1: alternate between hostname and IP address.
     header = hostname if show_hostname else ip_address
     draw.text((x, top), header, font=font, fill=255)
