@@ -56,27 +56,75 @@ font = ImageFont.load_default()
 # Some other nice fonts to try: http://www.dafont.com/bitmap.php
 # font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
 
+
+def draw_bar(draw, x, y, width, height, label, value, max_value=100):
+    """Draw a horizontal bar chart showing usage of a metric.
+
+    :param draw: PIL ImageDraw object.
+    :param int x: Left edge x-coordinate.
+    :param int y: Top edge y-coordinate.
+    :param int width: Total width available for the label + bar.
+    :param int height: Height of the bar (text is drawn within this height).
+    :param str label: Short label displayed to the left of the bar (e.g. "CPU").
+    :param float value: Current value of the metric.
+    :param float max_value: Maximum value (default 100, i.e. percentage).
+    """
+    # Reserve space for the label text and a small gap.
+    label_text = f"{label}:"
+    label_width = draw.textlength(label_text, font=font)
+    gap = 2
+    bar_x = int(x + label_width + gap)
+    bar_width = width - int(label_width + gap)
+
+    # Draw the label.
+    draw.text((x, y), label_text, font=font, fill=255)
+
+    # Draw the outline of the bar.
+    draw.rectangle((bar_x, y, bar_x + bar_width, y + height - 1), outline=255, fill=0)
+
+    # Draw the filled portion proportional to value / max_value.
+    fill_width = int(bar_width * min(value, max_value) / max_value)
+    if fill_width > 0:
+        draw.rectangle(
+            (bar_x, y, bar_x + fill_width, y + height - 1), outline=255, fill=255
+        )
+
+    # Draw the percentage text centered inside the bar.
+    pct_text = f"{int(value)}%"
+    pct_w = draw.textlength(pct_text, font=font)
+    text_x = bar_x + (bar_width - pct_w) // 2
+    # Use inverted fill so the text is visible over both filled and empty regions.
+    draw.text((text_x, y), pct_text, font=font, fill=0 if fill_width > bar_width // 2 else 255)
+
+
 while True:
     # Draw a black filled box to clear the image.
     draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
     # Shell scripts for system monitoring from here:
     # https://unix.stackexchange.com/questions/119126/command-to-display-memory-usage-disk-usage-and-cpu-load
-    cmd = "hostname -I | cut -d' ' -f1"
-    IP = subprocess.check_output(cmd, shell=True).decode("utf-8")
+    cmd = "hostname"
+    IP = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
     cmd = 'cut -f 1 -d " " /proc/loadavg'
-    CPU = subprocess.check_output(cmd, shell=True).decode("utf-8")
-    cmd = "free -m | awk 'NR==2{printf \"Mem: %s/%s MB  %.2f%%\", $3,$2,$3*100/$2 }'"
-    MemUsage = subprocess.check_output(cmd, shell=True).decode("utf-8")
-    cmd = 'df -h | awk \'$NF=="/"{printf "Disk: %d/%d GB  %s", $3,$2,$5}\''
-    Disk = subprocess.check_output(cmd, shell=True).decode("utf-8")
+    CPU = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    cmd = "free -m | awk 'NR==2{printf \"%.2f\", $3*100/$2 }'"
+    MemPercent = float(subprocess.check_output(cmd, shell=True).decode("utf-8").strip())
+    cmd = "df -h | awk '$NF==\"/\"{printf \"%s\", $5}'"
+    DiskPercent = float(
+        subprocess.check_output(cmd, shell=True).decode("utf-8").strip().rstrip("%")
+    )
 
-    # Write four lines of text.
+    # Convert CPU load average to a rough percentage (assumes single-core max of 1.0).
+    CPUPercent = min(float(CPU) * 100, 100)
 
-    draw.text((x, top + 0), "IP: " + IP, font=font, fill=255)
-    draw.text((x, top + 8), "CPU load: " + CPU, font=font, fill=255)
-    draw.text((x, top + 16), MemUsage, font=font, fill=255)
-    draw.text((x, top + 25), Disk, font=font, fill=255)
+    # Line 1: hostname as plain text.
+    draw.text((x, top + 0), "Host: " + IP, font=font, fill=255)
+
+    # Lines 2-4: horizontal bar charts for CPU, Memory, and Disk usage.
+    bar_height = 8
+    draw_bar(draw, x, top + 9, width, bar_height, "CPU", CPUPercent)
+    draw_bar(draw, x, top + 18, width, bar_height, "Mem", MemPercent)
+    draw_bar(draw, x, top + 27, width, bar_height, "Disk", DiskPercent)
 
     # Display image.
     disp.image(image)
