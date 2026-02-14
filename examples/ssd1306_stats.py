@@ -61,7 +61,7 @@ font = ImageFont.load_default()
 PAGE_DURATION = 2
 
 
-def draw_bar(draw, x, y, width, height, label, value, max_value=100):
+def draw_bar(draw, x, y, width, height, label, value, actual, total, max_value=100):
     """Draw a horizontal bar chart with the label centered inside.
 
     The label text is inverted where it overlaps the filled portion of the bar
@@ -73,7 +73,9 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
     :param int width: Total width available for the bar.
     :param int height: Total height of the bar.
     :param str label: Short label displayed inside the bar (e.g. "CPU").
-    :param float value: Current value of the metric.
+    :param float value: Current value of the metric (percentage).
+    :param str actual: Actual value string (e.g. "3049").
+    :param str total: Total/max value string (e.g. "40966").
     :param float max_value: Maximum value (default 100, i.e. percentage).
     """
     bar_width = width
@@ -89,7 +91,7 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
         )
 
     # Compute centered label position.
-    label_text = f"{label}: {int(value)}%"
+    label_text = f"{label}: {int(value)}%, {actual}/{total}"
     text_w = draw.textlength(label_text, font=font)
     text_x = int(x + (bar_width - text_w) // 2)
     text_y = int(y + (height - 10) // 2)
@@ -108,7 +110,7 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
 
 
 def get_stats():
-    """Fetch current system stats and return a list of (label, value) tuples."""
+    """Fetch current system stats and return a list of (label, value, actual, total) tuples."""
     cmd = "hostname"
     hostname = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
 
@@ -119,18 +121,25 @@ def get_stats():
     cpu_load = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
     cpu_percent = min(float(cpu_load) * 100, 100)
 
-    cmd = "free -m | awk 'NR==2{printf \"%.2f\", $3*100/$2 }'"
-    mem_percent = float(subprocess.check_output(cmd, shell=True).decode("utf-8").strip())
+    cmd = "nproc"
+    cpu_cores = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
 
-    cmd = "df -h | awk '$NF==\"/\"{printf \"%s\", $5}'"
-    disk_percent = float(
-        subprocess.check_output(cmd, shell=True).decode("utf-8").strip().rstrip("%")
-    )
+    cmd = "free -m | awk 'NR==2{printf \"%s %s\", $3, $2}'"
+    mem_parts = subprocess.check_output(cmd, shell=True).decode("utf-8").strip().split()
+    mem_used = mem_parts[0]
+    mem_total = mem_parts[1]
+    mem_percent = float(mem_used) * 100 / float(mem_total)
+
+    cmd = "df -h | awk '$NF==\"/\"{printf \"%s %s %s\", $3, $2, $5}'"
+    disk_parts = subprocess.check_output(cmd, shell=True).decode("utf-8").strip().split()
+    disk_used = disk_parts[0]
+    disk_total = disk_parts[1]
+    disk_percent = float(disk_parts[2].rstrip("%"))
 
     return hostname, ip_address, [
-        ("CPU", cpu_percent),
-        ("Mem", mem_percent),
-        ("Disk", disk_percent),
+        ("CPU", cpu_percent, cpu_load, cpu_cores),
+        ("Mem", mem_percent, mem_used, mem_total),
+        ("Disk", disk_percent, disk_used, disk_total),
     ]
 
 
@@ -152,7 +161,7 @@ while True:
         if "stats" not in dir():
             hostname, ip_address, stats = get_stats()
 
-    label, value = stats[page_index]
+    label, value, actual, total = stats[page_index]
 
     # Clear the image.
     draw.rectangle((0, 0, width, height), outline=0, fill=0)
@@ -165,21 +174,7 @@ while True:
     bar_y = top + 14
     bar_height = height - bar_y - 1
     bar_max_width = min(width, disp.width) - x
-    draw_bar(draw, x, bar_y, bar_max_width, bar_height, label, value)
-
-    # Display image.
-    disp.image(image)
-    disp.show()
-    time.sleep(0.1)
-    # Line 1: alternate between hostname and IP address.
-    header = hostname if show_hostname else ip_address
-    draw.text((x, top), header, font=font, fill=255)
-
-    # Draw a large bar chart using the remaining vertical space for the single stat.
-    bar_y = top + 14
-    bar_height = height - bar_y - 1
-    bar_max_width = min(width, disp.width) - x
-    draw_bar(draw, x, bar_y, bar_max_width, bar_height, label, value)
+    draw_bar(draw, x, bar_y, bar_max_width, bar_height, label, value, actual, total)
 
     # Display image.
     disp.image(image)
