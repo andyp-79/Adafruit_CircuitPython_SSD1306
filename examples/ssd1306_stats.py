@@ -8,6 +8,7 @@
 
 import subprocess
 import time
+import glob
 
 import busio
 from board import SCL, SDA
@@ -58,7 +59,70 @@ font = ImageFont.load_default()
 
 # --- Page configuration ---
 # Duration each page is displayed, in seconds.
-PAGE_DURATION = 2
+PAGE_DURATION = 5
+
+# --- Network tracking state ---
+_prev_net_bytes = None
+_prev_net_time = None
+
+
+def _get_default_iface():
+    """Return the name of the default network interface."""
+    try:
+        route = subprocess.check_output(
+            "ip route | awk '/default/ {print $5; exit}'", shell=True
+        ).decode("utf-8").strip()
+        if route:
+            return route
+    except Exception:
+        pass
+    # Fallback: pick first non-lo interface.
+    for path in sorted(glob.glob("/sys/class/net/*/statistics")):
+        iface = path.split("/")[4]
+        if iface != "lo":
+            return iface
+    return "eth0"
+
+
+def _read_net_bytes(iface):
+    """Read total rx + tx bytes for the given interface."""
+    try:
+        with open(f"/sys/class/net/{iface}/statistics/rx_bytes") as f:
+            rx = int(f.read().strip())
+        with open(f"/sys/class/net/{iface}/statistics/tx_bytes") as f:
+            tx = int(f.read().strip())
+        return rx + tx
+    except Exception:
+        return 0
+
+
+def _format_bps(bps):
+    """Format a bits-per-second value with a sensible unit."""
+    if bps >= 1_000_000_000:
+        return f"{bps / 1_000_000_000:.1f} Gbps"
+    elif bps >= 1_000_000:
+        return f"{bps / 1_000_000:.1f} Mbps"
+    elif bps >= 1_000:
+        return f"{bps / 1_000:.1f} Kbps"
+    else:
+        return f"{int(bps)} bps"
+
+
+def _get_link_speed_bps(iface):
+    """Read the negotiated link speed for the interface in bits per second."""
+    try:
+        with open(f"/sys/class/net/{iface}/speed") as f:
+            speed_mbps = int(f.read().strip())
+        if speed_mbps > 0:
+            return speed_mbps * 1_000_000
+    except Exception:
+        pass
+    # Fallback: assume 1 Gbps.
+    return 1_000_000_000
+
+
+_net_iface = _get_default_iface()
+NET_MAX_BPS = _get_link_speed_bps(_net_iface)
 
 
 def draw_bar(draw, x, y, width, height, label, value, actual, total, max_value=100):
@@ -111,6 +175,8 @@ def draw_bar(draw, x, y, width, height, label, value, actual, total, max_value=1
 
 def get_stats():
     """Fetch current system stats and return a list of (label, value, actual, total) tuples."""
+    global _prev_net_bytes, _prev_net_time
+
     cmd = "hostname"
     hostname = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
 
@@ -136,10 +202,26 @@ def get_stats():
     disk_total = disk_parts[1]
     disk_percent = float(disk_parts[2].rstrip("%"))
 
+    # Network throughput.
+    cur_bytes = _read_net_bytes(_net_iface)
+    cur_time = time.monotonic()
+    net_bps = 0.0
+    if _prev_net_bytes is not None and _prev_net_time is not None:
+        elapsed = cur_time - _prev_net_time
+        if elapsed > 0:
+            net_bps = (cur_bytes - _prev_net_bytes) * 8 / elapsed
+    _prev_net_bytes = cur_bytes
+    _prev_net_time = cur_time
+
+    net_percent = min(net_bps / NET_MAX_BPS * 100, 100)
+    net_actual = _format_bps(net_bps)
+    net_total = _format_bps(NET_MAX_BPS)
+
     return hostname, ip_address, [
         ("CPU", cpu_percent, cpu_load, cpu_cores),
         ("Mem", mem_percent, mem_used, mem_total),
         ("Disk", disk_percent, disk_used, disk_total),
+        ("Net", net_percent, net_actual, net_total),
     ]
 
 
