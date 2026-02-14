@@ -130,6 +130,7 @@ def get_stats():
 
 page_index = 0
 last_page_time = time.monotonic()
+show_hostname = True
 
 while True:
     now = time.monotonic()
@@ -138,6 +139,7 @@ while True:
     if now - last_page_time >= PAGE_DURATION:
         hostname, ip_address, stats = get_stats()
         page_index = (page_index + 1) % len(stats)
+        show_hostname = not show_hostname
         last_page_time = now
     else:
         # On first iteration we still need data.
@@ -149,13 +151,15 @@ while True:
     # Clear the image.
     draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
-    # Line 1: hostname and IP address.
-    draw.text((x, top), hostname + " " + ip_address, font=font, fill=255)
+    # Line 1: alternate between hostname and IP address.
+    header = hostname if show_hostname else ip_address
+    draw.text((x, top), header, font=font, fill=255)
 
     # Draw a large bar chart using the remaining vertical space for the single stat.
-    bar_y = top + 12
+    bar_y = top + 14
     bar_height = height - bar_y - 1
-    draw_bar(draw, x, bar_y, width, bar_height, label, value)
+    bar_max_width = min(width, disp.width) - x
+    draw_bar(draw, x, bar_y, bar_max_width, bar_height, label, value)
 
     # Display image.
     disp.image(image)
