@@ -73,12 +73,14 @@ def draw_bar(draw, x, y, width, height, label, value, max_value=100):
     :param float value: Current value of the metric.
     :param float max_value: Maximum value (default 100, i.e. percentage).
     """
-    # Draw the label text above the bar.
-    label_text = f"{label}: {int(value)}%"
-    draw.text((x, y), label_text, font=font, fill=255)
-
-    # Leave space for the label line, then draw the bar below it.
+    # Draw the label text centered above the bar.
     label_line_height = 12
+    label_text = f"{label}: {int(value)}%"
+    label_width = draw.textlength(label_text, font=font)
+    label_x = x + (width - label_width) // 2
+    draw.text((label_x, y), label_text, font=font, fill=255)
+
+    # The bar starts below the label and fills the remaining height.
     bar_y = y + label_line_height
     bar_height = height - label_line_height
     if bar_height < 1:
