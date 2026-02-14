@@ -96,16 +96,21 @@ def _read_net_bytes(iface):
         return 0
 
 
-def _format_bps(bps):
-    """Format a bits-per-second value with a sensible unit."""
-    if bps >= 1_000_000_000:
-        return f"{bps / 1_000_000_000:.1f} Gbps"
-    elif bps >= 1_000_000:
-        return f"{bps / 1_000_000:.1f} Mbps"
-    elif bps >= 1_000:
-        return f"{bps / 1_000:.1f} Kbps"
+def _format_bps(bps, show_unit=True):
+    """Format a bits-per-second value with binary (IEC) prefixes."""
+    if bps >= 1024 ** 3:
+        val = f"{bps / 1024 ** 3:.1f}"
+        unit = " Gibps"
+    elif bps >= 1024 ** 2:
+        val = f"{bps / 1024 ** 2:.1f}"
+        unit = " Mibps"
+    elif bps >= 1024:
+        val = f"{bps / 1024:.1f}"
+        unit = " Kibps"
     else:
-        return f"{int(bps)} bps"
+        val = f"{int(bps)}"
+        unit = " bps"
+    return val + unit if show_unit else val
 
 
 def _get_link_speed_bps(iface):
@@ -193,8 +198,8 @@ def get_stats():
     cmd = "free -m | awk 'NR==2{printf \"%s %s\", $3, $2}'"
     mem_parts = subprocess.check_output(cmd, shell=True).decode("utf-8").strip().split()
     mem_used = mem_parts[0]
-    mem_total = mem_parts[1]
-    mem_percent = float(mem_used) * 100 / float(mem_total)
+    mem_total = mem_parts[1] + "MiB"
+    mem_percent = float(mem_parts[0]) * 100 / float(mem_parts[1])
 
     cmd = "df -h | awk '$NF==\"/\"{printf \"%s %s %s\", $3, $2, $5}'"
     disk_parts = subprocess.check_output(cmd, shell=True).decode("utf-8").strip().split()
@@ -214,8 +219,8 @@ def get_stats():
     _prev_net_time = cur_time
 
     net_percent = min(net_bps / NET_MAX_BPS * 100, 100)
-    net_actual = _format_bps(net_bps)
-    net_total = _format_bps(NET_MAX_BPS)
+    net_actual = _format_bps(net_bps, show_unit=False)
+    net_total = _format_bps(NET_MAX_BPS, show_unit=True)
 
     return hostname, ip_address, [
         ("CPU", cpu_percent, cpu_load, cpu_cores),
