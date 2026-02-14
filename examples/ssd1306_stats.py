@@ -274,10 +274,10 @@ def get_stats():
     mem_total = mem_parts[1] + "MiB"
     mem_percent = float(mem_parts[0]) * 100 / float(mem_parts[1])
 
-    cmd = "df -h | awk '$NF==\"/\"{printf \"%s %s %s\", $3, $2, $5}'"
+    cmd = "df -BM | awk '$NF==\"/\"{printf \"%s %s %s\", $3, $2, $5}'"
     disk_parts = subprocess.check_output(cmd, shell=True).decode("utf-8").strip().split()
-    disk_used = disk_parts[0]
-    disk_total = disk_parts[1]
+    disk_used = disk_parts[0].rstrip("M") + "MiB"
+    disk_total = disk_parts[1].rstrip("M") + "MiB"
     disk_percent = float(disk_parts[2].rstrip("%"))
 
     # Network throughput.
