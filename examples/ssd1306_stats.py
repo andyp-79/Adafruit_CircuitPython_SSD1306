@@ -186,7 +186,14 @@ def get_stats():
     hostname = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
 
     cmd = "hostname -I | cut -d' ' -f1"
-    ip_address = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    ip4_address = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+
+    # Attempt to get the first global IPv6 address; fall back to empty string.
+    try:
+        cmd = "ip -6 addr show scope global | awk '/inet6/{print $2; exit}' | cut -d'/' -f1"
+        ip6_address = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    except Exception:
+        ip6_address = ""
 
     cmd = 'cut -f 1 -d " " /proc/loadavg'
     cpu_load = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
@@ -222,7 +229,7 @@ def get_stats():
     net_actual = _format_bps(net_bps, show_unit=False)
     net_total = _format_bps(NET_MAX_BPS, show_unit=True)
 
-    return hostname, ip_address, [
+    return hostname, ip4_address, ip6_address, [
         ("CPU", cpu_percent, cpu_load, cpu_cores),
         ("Mem", mem_percent, mem_used, mem_total),
         ("Disk", disk_percent, disk_used, disk_total),
@@ -232,29 +239,30 @@ def get_stats():
 
 page_index = 0
 last_page_time = time.monotonic()
-show_hostname = True
+header_index = 0
 
 while True:
     now = time.monotonic()
 
     # Flip to the next page after PAGE_DURATION seconds.
     if now - last_page_time >= PAGE_DURATION:
-        hostname, ip_address, stats = get_stats()
+        hostname, ip4_address, ip6_address, stats = get_stats()
         page_index = (page_index + 1) % len(stats)
-        show_hostname = not show_hostname
+        header_index = (header_index + 1) % 3
         last_page_time = now
     else:
         # On first iteration we still need data.
         if "stats" not in dir():
-            hostname, ip_address, stats = get_stats()
+            hostname, ip4_address, ip6_address, stats = get_stats()
 
     label, value, actual, total = stats[page_index]
 
     # Clear the image.
     draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
-    # Line 1: alternate between hostname and IP address.
-    header = hostname if show_hostname else ip_address
+    # Line 1: cycle through hostname, IPv4 address, and IPv6 address.
+    headers = [hostname, ip4_address, ip6_address if ip6_address else "No IPv6"]
+    header = headers[header_index]
     draw.text((x, top), header, font=font, fill=255)
 
     # Draw a large bar chart using the remaining vertical space for the single stat.
