@@ -226,7 +226,7 @@ def draw_bar(draw, x, y, width, height, label, value, actual, total, max_value=1
         )
 
     # Compute centered label position.
-    label_text = f"{label}: {int(value)}%, {actual}/{total}"
+    label_text = f"{label} {int(value)}% {actual}/{total}"
     text_w = draw.textlength(label_text, font=font)
     text_x = int(x + (bar_width - text_w) // 2)
     text_y = int(y + (height - 10) // 2)
