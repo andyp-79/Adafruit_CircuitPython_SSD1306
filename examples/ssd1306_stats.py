@@ -276,7 +276,7 @@ def get_stats():
 
     cmd = "df -BM | awk '$NF==\"/\"{printf \"%s %s %s\", $3, $2, $5}'"
     disk_parts = subprocess.check_output(cmd, shell=True).decode("utf-8").strip().split()
-    disk_used = disk_parts[0].rstrip("M") + "MiB"
+    disk_used = disk_parts[0].rstrip("M")
     disk_total = disk_parts[1].rstrip("M") + "MiB"
     disk_percent = float(disk_parts[2].rstrip("%"))
 
